@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	apiParsers "propertytreeanalyzer/api/parsers"
-	apiStreams "propertytreeanalyzer/api/streams"
+	apiParsers "propertytreeanalyzer/pkg/api/parsers"
+	apiStreams "propertytreeanalyzer/pkg/api/streams"
 )
 
 var (

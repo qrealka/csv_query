@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	api "propertytreeanalyzer/api/groupify"
+	api "propertytreeanalyzer/pkg/api/groupify"
 )
 
 type mockJsonStream struct {

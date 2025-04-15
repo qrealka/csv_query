@@ -5,90 +5,64 @@ A Go application for analyzing property values in relation to street tree densit
 ## Overview
 
 This application processes:
+
 - Property data from CSV files containing property details like addresses, prices, and sizes
 - Street tree data from JSON files containing information about trees and their locations
 
 It then performs analysis to determine if there's a correlation between street tree density and property values.
 
-## Project Structure
+We have two files: dublin-trees.json and dublin-property.csv:
 
-```
-propertytreeanalyzer/
-├── cmd/
-│   └── propertytreeanalyzer/
-│       └── main.go         # Main application entry point, CLI handling
-├── pkg/
-│   ├── config/             # Configuration management
-│   │   └── config.go
-│   ├── streetclassifier/   # Logic for loading & classifying streets from JSON
-│   │   ├── classifier.go
-│   │   └── classifier_test.go
-│   ├── csvparser/          # Logic for parsing the CSV property data
-│   │   ├── parser.go
-│   │   └── parser_test.go
-│   ├── aggregator/         # Logic for aggregating property prices and statistics
-│   │   ├── aggregator.go
-│   │   └── aggregator_test.go
-│   └── pipeline/           # Coordinates the concurrent processing workflow
-│       └── pipeline.go
-├── data/                   # Sample/test data files
-│   ├── test_trees.json
-│   └── test_properties.csv
-```
+- dublin-trees.json contains a list of street names. Streets are split into two categories: `short` and `tall`, based on the median tree height as recorded by Dublin City Council.
+- dublin-property.csv contains a subset of the Residential Property Price Register, with a list of property addresses, their street name and sale price in euro.
 
-## Installation
+We've cleaned the datasets a little, so the street name in dublin-trees.json exactly matches the `Street Name` column in dublin-property.csv.
 
-This project requires Go 1.24.1 or higher.
+### dublin-trees.json structure
 
-```bash
-git clone <repository-url>
-cd propertytreeanalyzer
-go build ./cmd/propertytreeanalyzer
-```
+There are two top-level entries: short and tall.
 
-## Usage
+Street names are in an arbitrarily nested structure, only the entry with a height is relevant and this entry contains the complete street name.
 
-### Basic Usage
+Here's an example:
 
-```bash
-./propertytreeanalyzer --trees path/to/trees.json --properties path/to/properties.csv --output results.csv
-```
-
-### Command-line Arguments
-
-- `--trees`: Path to the JSON file containing street tree data (required)
-- `--properties`: Path to the CSV file containing property data (required)
-- `--output`: Path to output the results (default: results.csv)
-
-## Example Output
-
-The application will generate a CSV file with the following columns:
-- Street: Street name
-- Tree Count: Number of trees on the street
-- Tree Density: Classification of tree density (Low, Medium, High)
-- Property Count: Number of properties on the street
-- Avg Price: Average property price on the street
-- Median Price: Median property price on the street
-- Min Price: Minimum property price on the street
-- Max Price: Maximum property price on the street
-- Avg Price Per SqFt: Average price per square foot on the street
-
-## Running Tests
-
-To run tests for all packages:
-
-```bash
-go test ./...
+```json
+        {
+            "short": {
+                "drive": {
+                    "abbey": {
+                        "abbey drive": 0
+                    },
+                    "coolrua": {
+                        "coolrua drive": 10
+                    },
+                    "coultry": {
+                        "coultry drive": 5
+                    },
+                }
+            },
+            "tall": {
+                "gardens": {
+                    "temple": {
+                        "temple gardens": 20
+                    }
+                },
+                "bramblings": {
+                    "the": {
+                        "the bramblings": 20
+                    }
+                },
+            }
+        }
 ```
 
-To run tests for a specific package:
+The "short tree" street names in this example are:
 
-```bash
-go test ./pkg/aggregator
-go test ./pkg/csvparser
-go test ./pkg/streetclassifier
-```
+- abbey drive
+- coolrua drive
+- coultry drive
 
-## License
+and the "tall tree" street names are:
 
-[Specify your license here]
+- temple gardens
+- the bramblings

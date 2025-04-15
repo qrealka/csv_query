@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	apiParsers "propertytreeanalyzer/api/parsers"
-	apiStreams "propertytreeanalyzer/api/streams"
+	apiParsers "propertytreeanalyzer/pkg/api/parsers"
+	apiStreams "propertytreeanalyzer/pkg/api/streams"
 )
 
 // MockCsvStream is a mock implementation of the CsvStream interface for testing

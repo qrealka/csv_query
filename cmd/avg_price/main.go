@@ -7,9 +7,9 @@ import (
 	"io"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 
+	apd "github.com/cockroachdb/apd/v3"
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/transform"
 )
@@ -60,8 +60,15 @@ func main() {
 	fmt.Printf("Found Price column at index %d\n", priceIndex)
 
 	// Variables for calculating average
-	var sum float64
-	var count int
+	var count int64
+	sum := apd.New(0, 0)
+	sumCtx := apd.Context{
+		Precision:   100,
+		MaxExponent: apd.MaxExponent,
+		MinExponent: apd.MinExponent,
+		Traps:       apd.DefaultTraps,
+		Rounding:    apd.RoundHalfEven, // Or RoundHalfUp, less critical here
+	}
 
 	// Process the file row by row
 	for {
@@ -89,15 +96,34 @@ func main() {
 		}
 
 		// Add to sum and increment count
-		sum += price
+		if _, err := sumCtx.Add(sum, sum, price); err != nil {
+			log.Printf("Warning: Error adding price '%s' to sum: %v", priceStr, err)
+			return
+		}
 		count++
 	}
 
 	// Calculate and print average
 	if count > 0 {
-		average := sum / float64(count)
+		avgCtx := apd.Context{
+			Precision:   50,
+			MaxExponent: apd.MaxExponent,
+			MinExponent: apd.MinExponent,
+			Traps:       apd.DefaultTraps,
+			Rounding:    apd.RoundHalfEven, // Banker's rounding for final result
+		}
+		cnt := apd.New(count, 0)
+		avg := apd.New(0, 0)
+		if _, err := avgCtx.Quo(avg, sum, cnt); err != nil {
+			log.Printf("Warning: Error calculating average: %v", err)
+			return
+		}
+		if _, err := avgCtx.Quantize(avg, avg, -2); err != nil {
+			log.Printf("Warning: Error quantizing average: %v", err)
+			return
+		}
 		fmt.Printf("Processed %d records\n", count)
-		fmt.Printf("Average price: %.2f\n", average)
+		fmt.Println("Average price: ", avg)
 	} else {
 		fmt.Println("No valid price records found")
 	}
@@ -105,7 +131,7 @@ func main() {
 
 // parsePrice extracts a float value from a price string by removing
 // currency symbols, commas and other non-numeric characters
-func parsePrice(price string) (float64, error) {
+func parsePrice(price string) (d *apd.Decimal, err error) {
 	// Remove currency symbol, commas, and spaces
 	price = strings.Replace(price, "$", "", -1)
 	price = strings.Replace(price, "€", "", -1)
@@ -114,6 +140,6 @@ func parsePrice(price string) (float64, error) {
 	price = strings.Replace(price, " ", "", -1)
 	price = strings.TrimSpace(price)
 
-	// Parse as float
-	return strconv.ParseFloat(price, 64)
+	d, _, err = apd.NewFromString(price)
+	return d, err
 }

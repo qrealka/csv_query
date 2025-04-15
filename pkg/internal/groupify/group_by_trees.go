@@ -6,8 +6,8 @@ import (
 	"io"
 	"log/slog"
 
-	apiGroupify "propertytreeanalyzer/api/groupify"
-	apiStreams "propertytreeanalyzer/api/streams"
+	apiGroupify "propertytreeanalyzer/pkg/api/groupify"
+	apiStreams "propertytreeanalyzer/pkg/api/streams"
 )
 
 // TreesGrouper contains channels for tree processing
