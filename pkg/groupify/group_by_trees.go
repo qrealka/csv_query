@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 
+	attr "propertytreeanalyzer/pkg/api/attribute"
 	apiGroupify "propertytreeanalyzer/pkg/api/groupify"
 	apiStreams "propertytreeanalyzer/pkg/api/streams"
 )
@@ -29,7 +30,7 @@ var (
 )
 
 // Key implements StreetGroupItem.
-func (s *streetsGroupsByTreeSize) Key() any {
+func (s *streetsGroupsByTreeSize) Key() attr.BaseAttribute {
 	return s.groupKey
 }
 

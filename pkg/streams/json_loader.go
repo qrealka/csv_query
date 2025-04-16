@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
-	iface "propertytreeanalyzer/api/streams"
+	iface "propertytreeanalyzer/pkg/api/streams"
 )
 
 type jsonReader struct {

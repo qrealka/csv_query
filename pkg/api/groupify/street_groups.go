@@ -1,9 +1,13 @@
 package groupify
 
-import "context"
+import (
+	"context"
+
+	attr "propertytreeanalyzer/pkg/api/attribute"
+)
 
 type StreetGroupItem interface {
-	Key() any
+	Key() attr.BaseAttribute
 	StreetName() StreetName
 }
 

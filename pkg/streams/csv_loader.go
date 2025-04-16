@@ -4,7 +4,7 @@ import (
 	"encoding/csv"
 	"io"
 
-	iface "propertytreeanalyzer/api/streams"
+	iface "propertytreeanalyzer/pkg/api/streams"
 )
 
 type csvReader struct {

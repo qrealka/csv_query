@@ -2,7 +2,8 @@ package aggregators
 
 import (
 	"context"
-	apiParsers "propertytreeanalyzer/pkg/api/parsers"
+
+	attr "propertytreeanalyzer/pkg/api/attribute"
 )
 
 // StreetGroupAggregator joins street attributes with street groups
@@ -10,5 +11,5 @@ import (
 type StreetGroupAggregator interface {
 	// Process reads attributes from a channel, groups them by street name,
 	// and returns statistics for each group
-	Process(ctx context.Context, attributes <-chan apiParsers.StreetAttribute) error
+	Process(ctx context.Context, attributes <-chan attr.StreetAttribute) error
 }

@@ -1,11 +1,11 @@
 package aggregators
 
 import (
-	apd "github.com/cockroachdb/apd/v3"
+	attr "propertytreeanalyzer/pkg/api/attribute"
 )
 
 // AverageByGroup represents aggregated values for a group
 type AverageByGroup interface {
-	GroupKey() any
-	AverageValue() apd.Decimal
+	GroupKey() attr.BaseAttribute
+	AverageValue() attr.NumericAttribute
 }
