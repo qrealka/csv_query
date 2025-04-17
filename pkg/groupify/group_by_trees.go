@@ -45,7 +45,7 @@ func NewTreesGrouper(stream apiStreams.JsonStream) apiGroupify.StreetGroups {
 }
 
 func (t *treesGrouper) processJson(ctx context.Context, dst chan<- apiGroupify.StreetGroupItem) (bool, error) {
-	tok, err := t.source.ReadJsonToken()
+	tok, err := t.source.ReadJsonToken(ctx)
 	if err == io.EOF {
 		return true, nil
 	}

@@ -4,8 +4,11 @@ package attribute
 type NumericType int
 
 const (
+	// Nothing represents a non-numeric value
+	// We need this, b/c zero initialized enums shouldn't be used
+	Nothing NumericType = iota
 	// Float represents a float64 value
-	Float = iota
+	Float
 	// Decimal represents an arbitrary decimal value with fixed precision
 	Decimal
 )

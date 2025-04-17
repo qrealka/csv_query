@@ -1,6 +1,7 @@
 package streams
 
 import (
+	"context"
 	"encoding/json"
 )
 
@@ -8,5 +9,5 @@ import (
 type JsonStream interface {
 	// ReadJsonToken reads the next JSON token from the stream.
 	// Returns the next token and any error encountered.
-	ReadJsonToken() (json.Token, error)
+	ReadJsonToken(ctx context.Context) (json.Token, error)
 }

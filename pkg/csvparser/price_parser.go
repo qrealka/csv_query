@@ -82,7 +82,7 @@ func (p *PriceParser) loadPrices(ctx context.Context, out chan<- streetPricePair
 	defer close(out)
 
 	for {
-		record, err := p.stream.ReadCsvRecord()
+		record, err := p.stream.ReadCsvRecord(ctx)
 		if err == io.EOF {
 			slog.InfoContext(ctx, "End of CSV stream")
 			return nil

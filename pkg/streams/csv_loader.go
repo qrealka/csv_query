@@ -1,6 +1,7 @@
 package streams
 
 import (
+	"context"
 	"encoding/csv"
 	"io"
 
@@ -32,11 +33,17 @@ func NewCsvStream(reader io.Reader) (iface.CsvStream, error) {
 }
 
 // ReadCsvRecord implements CsvStream.
-func (c *csvReader) ReadCsvRecord() ([]string, error) {
+func (c *csvReader) ReadCsvRecord(ctx context.Context) ([]string, error) {
 	if c == nil || c.reader == nil {
 		return nil, io.EOF
 	}
-	return c.reader.Read()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		// Continue reading CSV records
+		return c.reader.Read()
+	}
 }
 
 // GetHeader implements CsvStream.

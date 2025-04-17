@@ -1,6 +1,7 @@
 package csvparser
 
 import (
+	"context"
 	"errors"
 	"io"
 	"reflect"
@@ -37,7 +38,7 @@ func (m *MockCsvStream) GetHeader() []string {
 }
 
 // ReadCsvRecord reads the next CSV record
-func (m *MockCsvStream) ReadCsvRecord() ([]string, error) {
+func (m *MockCsvStream) ReadCsvRecord(_ context.Context) ([]string, error) {
 	if m.currentRow >= len(m.records) {
 		return nil, io.EOF
 	}
@@ -399,7 +400,7 @@ func (m *MockErrorStream) GetHeader() []string {
 	return m.header
 }
 
-func (m *MockErrorStream) ReadCsvRecord() ([]string, error) {
+func (m *MockErrorStream) ReadCsvRecord(_ context.Context) ([]string, error) {
 	return nil, m.err
 }
 
@@ -472,7 +473,7 @@ func (t *testCsvStream) readHeader() {
 	t.hasRead = true
 }
 
-func (t *testCsvStream) ReadCsvRecord() ([]string, error) {
+func (t *testCsvStream) ReadCsvRecord(_ context.Context) ([]string, error) {
 	if !t.hasRead {
 		t.readHeader()
 	}

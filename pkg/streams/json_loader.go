@@ -1,6 +1,7 @@
 package streams
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 
@@ -20,9 +21,14 @@ func NewJsonStream(reader io.Reader) iface.JsonStream {
 }
 
 // ReadJsonToken implements JsonStream.
-func (j *jsonReader) ReadJsonToken() (json.Token, error) {
+func (j *jsonReader) ReadJsonToken(ctx context.Context) (json.Token, error) {
 	if j == nil || j.decoder == nil {
 		return nil, io.EOF
 	}
-	return j.decoder.Token()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		return j.decoder.Token()
+	}
 }

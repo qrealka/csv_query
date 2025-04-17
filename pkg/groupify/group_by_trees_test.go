@@ -16,7 +16,7 @@ type mockJsonStream struct {
 }
 
 // ReadJsonToken implements the JsonStream interface
-func (m *mockJsonStream) ReadJsonToken() (json.Token, error) {
+func (m *mockJsonStream) ReadJsonToken(_ context.Context) (json.Token, error) {
 	if m.index >= len(m.tokens) {
 		return nil, io.EOF
 	}
