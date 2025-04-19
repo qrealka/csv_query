@@ -133,9 +133,9 @@ func main() {
 // currency symbols, commas and other non-numeric characters
 func parsePrice(price string) (d *apd.Decimal, err error) {
 	// Remove currency symbol, commas, and spaces
-	price = strings.Replace(price, "$", "", -1)
-	price = strings.Replace(price, "€", "", -1)
-	price = strings.Replace(price, "£", "", -1)
+	price = strings.ReplaceAll(price, "$", "")
+	price = strings.ReplaceAll(price, "€", "")
+	price = strings.ReplaceAll(price, "£", "")
 	price = strings.Replace(price, ",", "", -1)
 	price = strings.Replace(price, " ", "", -1)
 	price = strings.TrimSpace(price)

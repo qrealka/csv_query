@@ -95,8 +95,7 @@ func TestTreesGrouperGroupStreets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			grouper := NewTreesGrouper(tt.stream)
-			itemChan := make(chan api.StreetGroupItem)
+			grouper, itemChan := NewTreesGrouper(tt.stream)
 
 			// Collect items from the channel in a separate goroutine
 			var items []api.StreetGroupItem
@@ -181,8 +180,7 @@ func TestTreesGrouperWithLargeJson(t *testing.T) {
 		api.TreeSizeTall:  {"finglas road"},
 	}
 
-	grouper := NewTreesGrouper(stream)
-	itemChan := make(chan api.StreetGroupItem)
+	grouper, itemChan := NewTreesGrouper(stream)
 	var items []api.StreetGroupItem
 	done := make(chan struct{})
 	go func() {
@@ -225,8 +223,7 @@ func TestEmptyJson(t *testing.T) {
 		},
 	}
 
-	grouper := NewTreesGrouper(stream)
-	itemChan := make(chan api.StreetGroupItem)
+	grouper, itemChan := NewTreesGrouper(stream)
 
 	var items []api.StreetGroupItem
 	done := make(chan struct{})
@@ -253,11 +250,9 @@ func TestEmptyJson(t *testing.T) {
 func TestCancelledContext(t *testing.T) {
 	stream := createMockTreeStream()
 
-	grouper := NewTreesGrouper(stream)
+	grouper, itemChan := NewTreesGrouper(stream)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-
-	itemChan := make(chan api.StreetGroupItem)
 
 	done := make(chan struct{})
 	go func() {

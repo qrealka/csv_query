@@ -3,11 +3,11 @@ package csvparser
 import "strings"
 
 // PriceParserOption configures a PriceParser
-type PriceParserOption func(*PriceParser) error
+type PriceParserOption func(*priceParser) error
 
 // WithColNames sets street and price column names by header lookup
 func WithColNames(streetColName, priceColName string) PriceParserOption {
-	return func(p *PriceParser) error {
+	return func(p *priceParser) error {
 		streetColName = strings.TrimSpace(streetColName)
 		priceColName = strings.TrimSpace(priceColName)
 
@@ -46,7 +46,7 @@ func WithColNames(streetColName, priceColName string) PriceParserOption {
 
 // WithColIndexes sets street and price column indexes directly
 func WithColIndexes(streetColIdx, priceColIdx int) PriceParserOption {
-	return func(p *PriceParser) error {
+	return func(p *priceParser) error {
 		if streetColIdx < 0 {
 			return errStreetColumnIndexNotSpecified
 		}
@@ -64,7 +64,7 @@ func WithColIndexes(streetColIdx, priceColIdx int) PriceParserOption {
 
 // WithDecimals forces decimal parsing (default)
 func WithDecimals() PriceParserOption {
-	return func(p *PriceParser) error {
+	return func(p *priceParser) error {
 		p.useFloats = false
 		return nil
 	}
@@ -72,7 +72,7 @@ func WithDecimals() PriceParserOption {
 
 // WithFloats forces float64 parsing
 func WithFloats() PriceParserOption {
-	return func(p *PriceParser) error {
+	return func(p *priceParser) error {
 		p.useFloats = true
 		return nil
 	}

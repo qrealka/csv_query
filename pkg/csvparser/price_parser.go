@@ -7,12 +7,14 @@ import (
 	"strings"
 
 	attr "propertytreeanalyzer/pkg/api/attribute"
+	apiParser "propertytreeanalyzer/pkg/api/parsers"
 	apiStreams "propertytreeanalyzer/pkg/api/streams"
 	decimal "propertytreeanalyzer/pkg/numeric"
 )
 
 var (
-	_ attr.StreetAttribute = (*streetPricePair)(nil)
+	_ attr.StreetAttribute            = (*streetPricePair)(nil)
+	_ apiParser.StreetAttributeParser = (*priceParser)(nil)
 )
 
 // streetPricePair represents a pair of street name and price
@@ -42,9 +44,9 @@ func (s streetPricePair) EqualTo(other attr.StreetAttribute) bool {
 	return s.price.EqualTo(other.AttributeValue())
 }
 
-// PriceParser parses CSV records and extracts street name and price pairs
+// priceParser parses CSV records and extracts street name and price pairs
 // It implements the StreetAttributeParser interface
-type PriceParser struct {
+type priceParser struct {
 	stream    apiStreams.CsvStream
 	streetIdx int
 	priceIdx  int
@@ -52,11 +54,11 @@ type PriceParser struct {
 }
 
 // NewPriceParser creates a new price parser with the given CSV stream and column names
-func NewPriceParser(stream apiStreams.CsvStream, opts ...PriceParserOption) (*PriceParser, error) {
+func NewPriceParser(stream apiStreams.CsvStream, opts ...PriceParserOption) (apiParser.StreetAttributeParser, error) {
 	if stream == nil {
 		return nil, errNilCsvStream
 	}
-	p := &PriceParser{
+	p := &priceParser{
 		stream:    stream,
 		streetIdx: -1,
 		priceIdx:  -1,
@@ -73,7 +75,7 @@ func NewPriceParser(stream apiStreams.CsvStream, opts ...PriceParserOption) (*Pr
 // loadPrices reads the CSV stream and sends street name and price pairs to the provided channel
 // It processes the street name to lowercase and converts price strings to float64
 // The channel is closed when parsing is complete or an error occurs
-func (p *PriceParser) loadPrices(ctx context.Context, out chan<- streetPricePair) error {
+func (p *priceParser) loadPrices(ctx context.Context, out chan<- attr.StreetAttribute) error {
 	if p == nil || p.stream == nil {
 		close(out)
 		return errNilParserOrStream
@@ -127,23 +129,10 @@ func (p *PriceParser) loadPrices(ctx context.Context, out chan<- streetPricePair
 
 // ParseAttributes reads the CSV stream and sends street attribute pairs to the provided channel
 // It implements the StreetAttributeParser interface method
-func (p *PriceParser) ParseAttributes(ctx context.Context, out chan<- attr.StreetAttribute) error {
+func (p *priceParser) ParseAttributes(ctx context.Context, out chan<- attr.StreetAttribute) error {
 	if p == nil || p.stream == nil {
 		close(out)
 		return errNilParserOrStream
 	}
-
-	// Create an intermediary channel for StreetPricePair objects
-	priceChan := make(chan streetPricePair)
-
-	// Start a goroutine to process and forward the street price pairs
-	go func() {
-		for pair := range priceChan {
-			out <- pair
-		}
-		close(out)
-	}()
-
-	// Use the existing ParsePrices method to handle the parsing logic
-	return p.loadPrices(ctx, priceChan)
+	return p.loadPrices(ctx, out)
 }

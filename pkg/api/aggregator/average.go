@@ -1,6 +1,8 @@
 package aggregators
 
 import (
+	"context"
+
 	attr "propertytreeanalyzer/pkg/api/attribute"
 )
 
@@ -8,4 +10,8 @@ import (
 type AverageByGroup interface {
 	GroupKey() attr.BaseAttribute
 	AverageValue() attr.NumericAttribute
+}
+
+type AvgerageAggregator interface {
+	Process(ctx context.Context, streets <-chan attr.StreetAttribute) ([]AverageByGroup, error)
 }

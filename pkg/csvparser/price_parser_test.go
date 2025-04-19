@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
-	"reflect"
 	"strings"
 	"testing"
 
 	attr "propertytreeanalyzer/pkg/api/attribute"
-	apiParsers "propertytreeanalyzer/pkg/api/parsers"
 	apiStreams "propertytreeanalyzer/pkg/api/streams"
 	numeric "propertytreeanalyzer/pkg/numeric"
 )
@@ -122,17 +120,14 @@ func TestNewPriceParser(t *testing.T) {
 }
 
 func TestParseAttributes(t *testing.T) {
-	// Test cases
 	tests := []struct {
-		name           string
-		header         []string
-		records        [][]string
-		streetColName  string
-		priceColName   string
-		expectedAttrs  []attr.StreetAttribute
-		expectedError  error
-		nilParser      bool
-		nilParserError bool
+		name          string
+		header        []string
+		records       [][]string
+		streetColName string
+		priceColName  string
+		expectedAttrs []attr.StreetAttribute
+		expectedError error
 	}{
 		{
 			name:          "Valid parsing",
@@ -157,26 +152,14 @@ func TestParseAttributes(t *testing.T) {
 			},
 			expectedError: nil,
 		},
-		{
-			name:           "Nil parser",
-			nilParser:      true,
-			nilParserError: true,
-			expectedError:  errNilParserOrStream,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var parser apiParsers.StreetAttributeParser
-			var err error
-
-			if !tt.nilParser {
-				stream := NewMockCsvStream(tt.header, tt.records)
-				priceParser, perr := NewPriceParser(stream, WithColNames(tt.streetColName, tt.priceColName), WithFloats())
-				if perr != nil {
-					t.Fatalf("Failed to create parser: %v", perr)
-				}
-				parser = priceParser // Use PriceParser as StreetAttributeParser
+			stream := NewMockCsvStream(tt.header, tt.records)
+			parser, perr := NewPriceParser(stream, WithColNames(tt.streetColName, tt.priceColName), WithFloats())
+			if perr != nil {
+				t.Fatalf("Failed to create parser: %v", perr)
 			}
 
 			out := make(chan attr.StreetAttribute)
@@ -184,39 +167,29 @@ func TestParseAttributes(t *testing.T) {
 
 			done := make(chan struct{})
 			go func() {
-				for attr := range out {
-					results = append(results, attr)
+				for a := range out {
+					results = append(results, a)
 				}
 				close(done)
 			}()
 
-			if parser != nil {
-				err = parser.ParseAttributes(t.Context(), out)
-			} else {
-				// Handle nil parser case
-				var p *PriceParser
-				err = p.ParseAttributes(t.Context(), out)
-			}
+			err := parser.ParseAttributes(t.Context(), out)
 			<-done
 
 			if !errors.Is(err, tt.expectedError) {
 				t.Errorf("ParseAttributes() error = %v, wantErr %v", err, tt.expectedError)
 			}
-
 			if len(results) != len(tt.expectedAttrs) {
 				t.Errorf("ParseAttributes() got %d results, want %d", len(results), len(tt.expectedAttrs))
 				return
 			}
-
 			for i, got := range results {
 				want := tt.expectedAttrs[i]
 				if got.StreetName() != want.StreetName() {
 					t.Errorf("Result[%d] street name = %v, want %v", i, got.StreetName(), want.StreetName())
 				}
-				gotVal := got.AttributeValue()
-				wantVal := want.AttributeValue()
-				if !gotVal.EqualTo(wantVal) {
-					t.Errorf("Result[%d] price = %v, want %v", i, gotVal, wantVal)
+				if !got.AttributeValue().EqualTo(want.AttributeValue()) {
+					t.Errorf("Result[%d] price = %v, want %v", i, got.AttributeValue(), want.AttributeValue())
 				}
 			}
 		})
@@ -224,17 +197,14 @@ func TestParseAttributes(t *testing.T) {
 }
 
 func TestParsePrices(t *testing.T) {
-	// Test cases
 	tests := []struct {
-		name           string
-		header         []string
-		records        [][]string
-		streetColName  string
-		priceColName   string
-		expectedPairs  []streetPricePair
-		expectedError  error
-		nilParser      bool
-		nilParserError bool
+		name          string
+		header        []string
+		records       [][]string
+		streetColName string
+		priceColName  string
+		expectedPairs []streetPricePair
+		expectedError error
 	}{
 		{
 			name:          "Valid parsing",
@@ -281,29 +251,18 @@ func TestParsePrices(t *testing.T) {
 			},
 			expectedError: nil,
 		},
-		{
-			name:           "Nil parser",
-			nilParser:      true,
-			nilParserError: true,
-			expectedError:  errNilParserOrStream,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var parser *PriceParser
-			var err error
-
-			if !tt.nilParser {
-				stream := NewMockCsvStream(tt.header, tt.records)
-				parser, err = NewPriceParser(stream, WithColNames(tt.streetColName, tt.priceColName), WithFloats())
-				if err != nil {
-					t.Fatalf("Failed to create parser: %v", err)
-				}
+			stream := NewMockCsvStream(tt.header, tt.records)
+			parser, err := NewPriceParser(stream, WithColNames(tt.streetColName, tt.priceColName), WithFloats())
+			if err != nil {
+				t.Fatalf("Failed to create parser: %v", err)
 			}
 
-			out := make(chan streetPricePair)
-			var results []streetPricePair
+			out := make(chan attr.StreetAttribute)
+			var results []attr.StreetAttribute
 
 			done := make(chan struct{})
 			go func() {
@@ -313,15 +272,22 @@ func TestParsePrices(t *testing.T) {
 				close(done)
 			}()
 
-			err = parser.loadPrices(t.Context(), out)
+			err = parser.ParseAttributes(t.Context(), out)
 			<-done
 
 			if !errors.Is(err, tt.expectedError) {
 				t.Errorf("ParsePrices() error = %v, wantErr %v", err, tt.expectedError)
 			}
 
-			if !reflect.DeepEqual(results, tt.expectedPairs) {
-				t.Errorf("ParsePrices() got = %v, want %v", results, tt.expectedPairs)
+			if len(results) != len(tt.expectedPairs) {
+				t.Errorf("ParsePrices() got %d results, want %d", len(results), len(tt.expectedPairs))
+				return
+			}
+			for i, got := range results {
+				want := tt.expectedPairs[i]
+				if !got.EqualTo(want) {
+					t.Errorf("ParsePrices()[%d] street name = %v, want %v", i, got.StreetName(), want.StreetName())
+				}
 			}
 		})
 	}
@@ -376,14 +342,14 @@ func TestErrorScenarios(t *testing.T) {
 			t.Fatalf("Failed to create parser: %v", err)
 		}
 
-		out := make(chan streetPricePair)
+		out := make(chan attr.StreetAttribute)
 		go func() {
 			for range out {
 				// Just consume the channel
 			}
 		}()
 
-		err = parser.loadPrices(t.Context(), out)
+		err = parser.ParseAttributes(t.Context(), out)
 		if err == nil || err.Error() != "read error" {
 			t.Errorf("Expected 'read error', got %v", err)
 		}
@@ -417,8 +383,8 @@ func TestStreamIntegration(t *testing.T) {
 		t.Fatalf("Failed to create parser: %v", err)
 	}
 
-	out := make(chan streetPricePair)
-	var results []streetPricePair
+	out := make(chan attr.StreetAttribute)
+	var results []attr.StreetAttribute
 
 	done := make(chan struct{})
 	go func() {
@@ -428,7 +394,7 @@ func TestStreamIntegration(t *testing.T) {
 		close(done)
 	}()
 
-	err = parser.loadPrices(t.Context(), out)
+	err = parser.ParseAttributes(t.Context(), out)
 	if err != nil {
 		t.Errorf("ParsePrices() error = %v", err)
 	}
@@ -439,8 +405,15 @@ func TestStreamIntegration(t *testing.T) {
 		{streetName: "oak avenue", price: numeric.NewFloatAttribute(200000)},
 	}
 
-	if !reflect.DeepEqual(results, expected) {
-		t.Errorf("ParsePrices() got = %v, want %v", results, expected)
+	if len(results) != len(expected) {
+		t.Errorf("ParsePrices() got %d results, want %d", len(results), len(expected))
+	} else {
+		for i, got := range results {
+			want := expected[i]
+			if !got.EqualTo(want) {
+				t.Errorf("Result[%d] = %v, want %v", i, got, want)
+			}
+		}
 	}
 }
 

@@ -2,17 +2,17 @@ package aggregator
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
 
-	apiAgg "propertytreeanalyzer/pkg/api/aggregator"
+	api "propertytreeanalyzer/pkg/api/aggregator"
 	apiAttr "propertytreeanalyzer/pkg/api/attribute"
 	apiGroupify "propertytreeanalyzer/pkg/api/groupify"
 	num "propertytreeanalyzer/pkg/numeric"
 
 	"github.com/cockroachdb/apd/v3"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -20,12 +20,23 @@ const (
 	priceQueueSize  = 10000
 )
 
-// treeSizeAggregator implements StreetGroupAggregator
-type treeSizeAggregator struct {
-	grouper apiGroupify.StreetGroups
+type avgByGroup struct {
+	key apiAttr.BaseAttribute
+	val apiAttr.NumericAttribute
 }
 
+func (a avgByGroup) GroupKey() apiAttr.BaseAttribute        { return a.key }
+func (a avgByGroup) AverageValue() apiAttr.NumericAttribute { return a.val }
+
+type stringAttr string
+
+func (s stringAttr) String() string { return string(s) }
+
 var (
+	_ apiAttr.BaseAttribute  = (*stringAttr)(nil)
+	_ api.AverageByGroup     = (*avgByGroup)(nil)
+	_ api.AvgerageAggregator = (*avgPriceBy)(nil)
+
 	sumCtx apd.Context = apd.Context{
 		Precision:   100,
 		MaxExponent: apd.MaxExponent,
@@ -43,18 +54,31 @@ var (
 	}
 )
 
-// NewTreeSizeAggregator constructs one from a JsonStream
-func NewTreeSizeAggregator(g apiGroupify.StreetGroups) apiAgg.StreetGroupAggregator {
-	return &treeSizeAggregator{grouper: g}
+type avgPriceBy struct {
+	groups <-chan apiGroupify.StreetGroupItem
+}
+
+func NewAvgPriceBy(groups <-chan apiGroupify.StreetGroupItem) api.AvgerageAggregator {
+	return &avgPriceBy{
+		groups: groups,
+	}
 }
 
 // averagePrice calculates the average price of a group of attributes
-func (a *treeSizeAggregator) averagePrice(in <-chan apiAttr.NumericAttribute) (apiAttr.NumericAttribute, error) {
+func averagePrice(ctx context.Context, in <-chan apiAttr.NumericAttribute) (apiAttr.NumericAttribute, error) {
 	numType := apiAttr.Nothing
 	sumDec := apd.New(0, 0)
 	sumFloat := float64(0)
 	cnt := int64(0)
+	done := ctx.Done()
+
 	for val := range in {
+		select {
+		case <-done:
+			return nil, ctx.Err()
+		default:
+		}
+
 		if numType == apiAttr.Nothing {
 			// we initialize numeric type only once. I do notexpect that we could have few numeric types in one group
 			numType = val.GetNumericType()
@@ -62,25 +86,25 @@ func (a *treeSizeAggregator) averagePrice(in <-chan apiAttr.NumericAttribute) (a
 
 		if numType == apiAttr.Decimal {
 			if decVal, err := num.CastToDecimalAttribute(val); err != nil {
-				slog.Error("Error casting to decimal", "error", err)
+				slog.ErrorContext(ctx, "Error casting to decimal", "error", err)
 				return nil, err
 			} else {
 				price := decVal.GetDecimal()
 				if _, err := sumCtx.Add(sumDec, sumDec, price); err != nil {
-					slog.Error("Error adding price to sum", "price", price.String(), "error", err)
+					slog.ErrorContext(ctx, "Error adding price to sum", "price", price.String(), "error", err)
 					return nil, err
 				}
 			}
 		} else if numType == apiAttr.Float {
 			if floatVal, err := num.CastToFloatAttribute(val); err != nil {
-				slog.Error("Error casting to float", "error", err)
+				slog.ErrorContext(ctx, "Error casting to float", "error", err)
 				return nil, err
 			} else {
 				price := floatVal.GetFloat()
 				sumFloat += price
 			}
 		} else {
-			slog.Error("Unknown numeric type", "type", numType)
+			slog.ErrorContext(ctx, "Unknown numeric type", "type", numType)
 			return nil, fmt.Errorf("unknown numeric type: %s", val)
 		}
 		cnt++
@@ -90,11 +114,11 @@ func (a *treeSizeAggregator) averagePrice(in <-chan apiAttr.NumericAttribute) (a
 	if numType == apiAttr.Decimal {
 		avg := apd.New(0, 0)
 		if _, err := avgCtx.Quo(avg, sumDec, apd.New(cnt, 0)); err != nil {
-			slog.Error("Error calculating average", "error", err)
+			slog.ErrorContext(ctx, "Error calculating average", "error", err)
 			return nil, err
 		}
 		if _, err := avgCtx.Quantize(avg, avg, -2); err != nil {
-			slog.Error("Error quantizing average", "error", err)
+			slog.ErrorContext(ctx, "Error quantizing average", "error", err)
 			return nil, err
 		}
 		return num.NewDecimalAttribute(avg), nil
@@ -108,13 +132,15 @@ func (a *treeSizeAggregator) averagePrice(in <-chan apiAttr.NumericAttribute) (a
 
 }
 
-// Process reads StreetAttribute from 'attributes', groups them by tree‑size,
-// and prints the average price per group.
-func (a *treeSizeAggregator) Process(ctx context.Context, attributes <-chan apiAttr.StreetAttribute) error {
+// Process implements aggregators.AvgerageAggregator.
+func (a *avgPriceBy) Process(ctx context.Context, streets <-chan apiAttr.StreetAttribute) (outputs []api.AverageByGroup, resultErr error) {
 	// I use regular map here because the number of groups is immutable in the Process method
 	// So I precreate and fill maps
 	prices := make(map[string]chan apiAttr.NumericAttribute) // parallel calculation AVG price per groups
-	streetToSize := make(map[string]string)                  // joining street names with group ids
+	// here is the biggest storage complexity, but I do not expect to have more than 100K streets
+	// for golang 1.24 it is swiss table and for my microbenchmarks it works faster than existing Patricia tree in Go
+	streetToSize := make(map[string]string) // joining street names with group ids
+	done := ctx.Done()
 
 	type result struct {
 		avg apiAttr.NumericAttribute
@@ -122,62 +148,67 @@ func (a *treeSizeAggregator) Process(ctx context.Context, attributes <-chan apiA
 	}
 
 	// groupID → result{Avg, Err}
-	results := make(map[string]result)
+	var results sync.Map
 
-	// Load the street→TreeSize map
-	groupCh := make(chan apiGroupify.StreetGroupItem, groupsQueueSize)
-	go a.grouper.GroupStreets(ctx, groupCh)
-
-	// prefill maps
-	for item := range groupCh {
+	// prefill maps from JSON stream
+	for item := range a.groups {
 		groupId := item.Key().String()
 		streetToSize[item.StreetName().String()] = groupId
 		if _, ok := prices[groupId]; !ok {
 			prices[groupId] = make(chan apiAttr.NumericAttribute, priceQueueSize)
-			results[groupId] = result{avg: num.NoneNumeric, err: nil}
+			results.Store(groupId, result{avg: num.NoneNumeric, err: nil})
 		}
 	}
 
-	// Now maps price, streetToSize and results are filled and immutable
-	var wg sync.WaitGroup
-
-	// Spawn the summarizer goroutines
-	for group, ch := range prices {
-		wg.Add(1)
-		go func(groupId string, in <-chan apiAttr.NumericAttribute) {
-			defer wg.Done()
-			averagePrice, err := a.averagePrice(in)
-			results[groupId] = result{avg: averagePrice, err: err}
-		}(group, ch)
-	}
-
-	wg.Wait()
-
-	// print as JSON for easy parsing
-	type avgOutput struct {
-		GroupID      string `json:"tree_size"`
-		AveragePrice string `json:"average_price"`
-	}
-
-	// Compute and print all averages as a JSON array
-	var outputs []avgOutput
-	for groupId, res := range results {
-		if res.err != nil {
-			slog.Error("Error calculating average price", "groupId", groupId, "error", res.err)
-			return res.err
-		}
-		outputs = append(outputs, avgOutput{
-			GroupID:      groupId,
-			AveragePrice: res.avg.String(),
+	// spawn workers under errgroup
+	eg, ctx := errgroup.WithContext(ctx)
+	for groupId, ch := range prices {
+		groupId, ch := groupId, ch
+		eg.Go(func() error {
+			avgVal, err := averagePrice(ctx, ch)
+			results.Store(groupId, result{avg: avgVal, err: err})
+			return err
 		})
 	}
 
-	jsonData, err := json.Marshal(outputs)
-	if err != nil {
-		slog.Error("Error marshaling JSON array", "error", err)
-		return err
+	// feed price channels
+	go func() {
+		defer func() {
+			for _, ch := range prices {
+				close(ch)
+			}
+		}()
+		for street := range streets {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			groupID, ok := streetToSize[street.StreetName()]
+			if !ok {
+				continue
+			}
+			prices[groupID] <- street.AttributeValue()
+		}
+	}()
+
+	if err := eg.Wait(); err != nil {
+		return nil, err
 	}
 
-	fmt.Println(string(jsonData))
-	return nil
+	resultErr = nil
+	results.Range(func(key, value any) bool {
+		groupId := key.(string)
+		res := value.(result)
+		if res.err != nil {
+			resultErr = res.err
+			return false
+		}
+		outputs = append(outputs, avgByGroup{
+			key: stringAttr(groupId),
+			val: res.avg,
+		})
+		return true
+	})
+	return outputs, resultErr
 }

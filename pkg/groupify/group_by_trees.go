@@ -40,8 +40,8 @@ func (s *streetsGroupsByTreeSize) StreetName() apiGroupify.StreetName {
 }
 
 // NewTreesGrouper initializes a TreesGrouper with channels
-func NewTreesGrouper(stream apiStreams.JsonStream) apiGroupify.StreetGroups {
-	return &treesGrouper{source: stream}
+func NewTreesGrouper(stream apiStreams.JsonStream) (apiGroupify.StreetGroups, chan apiGroupify.StreetGroupItem) {
+	return &treesGrouper{source: stream}, make(chan apiGroupify.StreetGroupItem, 1000)
 }
 
 func (t *treesGrouper) processJson(ctx context.Context, dst chan<- apiGroupify.StreetGroupItem) (bool, error) {
@@ -97,9 +97,10 @@ func (t *treesGrouper) processJson(ctx context.Context, dst chan<- apiGroupify.S
 // GroupStreets implements StreetsGrouper.
 func (t *treesGrouper) GroupStreets(ctx context.Context, dst chan<- apiGroupify.StreetGroupItem) error {
 	defer close(dst)
+	done := ctx.Done()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-done:
 			return ctx.Err()
 		default:
 			done, err := t.processJson(ctx, dst)

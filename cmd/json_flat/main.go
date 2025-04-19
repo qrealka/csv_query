@@ -106,9 +106,10 @@ func main() {
 			if lastKey != "" {
 				// We found a key followed by a number.
 				// Add the key to the correct list based on the current section.
-				if currentSection == SectionShort {
+				switch currentSection {
+				case SectionShort:
 					shortStreets = append(shortStreets, lastKey)
-				} else if currentSection == SectionTall {
+				case SectionTall:
 					tallStreets = append(tallStreets, lastKey)
 				}
 				lastKey = ""
