@@ -11,8 +11,12 @@ BIN_NAME   := brightbeam
 all: tests build
 
 tests:
-	go test ./...
-	go test -race ./...
+	@docker run --rm \
+      -v "$(PWD)":/src \
+      -w /src \
+      $(GO_IMAGE) \
+      go test ./... && go test -race ./...
+      
 
 build: $(BUILD_DIR)
 	docker run --rm \

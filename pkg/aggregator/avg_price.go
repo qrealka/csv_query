@@ -113,8 +113,10 @@ func (a *avgPriceBy) Process(ctx context.Context, streets <-chan apiAttr.StreetA
 		err error
 	}
 
-	// groupID → result{Avg, Err}
-	var results sync.Map
+	var (
+		results sync.Map
+		order   []string
+	)
 
 	// prefill maps from JSON stream
 	for item := range a.groups {
@@ -123,6 +125,7 @@ func (a *avgPriceBy) Process(ctx context.Context, streets <-chan apiAttr.StreetA
 		if _, ok := prices[groupId]; !ok {
 			prices[groupId] = make(chan string, priceQueueSize)
 			results.Store(groupId, result{avg: "", err: nil})
+			order = append(order, groupId)
 		}
 	}
 
@@ -164,7 +167,7 @@ func (a *avgPriceBy) Process(ctx context.Context, streets <-chan apiAttr.StreetA
 	}
 
 	// build outputs in recorded order
-	for id := range prices {
+	for _, id := range order {
 		if v, found := results.Load(id); found {
 			r := v.(result)
 			if r.err != nil {
