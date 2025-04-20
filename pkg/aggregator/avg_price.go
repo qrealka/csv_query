@@ -163,19 +163,15 @@ func (a *avgPriceBy) Process(ctx context.Context, streets <-chan apiAttr.StreetA
 		return nil, err
 	}
 
-	resultErr = nil
-	results.Range(func(key, value any) bool {
-		groupId := key.(string)
-		res := value.(result)
-		if res.err != nil {
-			resultErr = res.err
-			return false
+	// build outputs in recorded order
+	for id := range prices {
+		if v, found := results.Load(id); found {
+			r := v.(result)
+			if r.err != nil {
+				return nil, r.err
+			}
+			outputs = append(outputs, avgByGroup{key: id, val: r.avg})
 		}
-		outputs = append(outputs, avgByGroup{
-			key: groupId,
-			val: res.avg,
-		})
-		return true
-	})
-	return outputs, resultErr
+	}
+	return outputs, nil
 }
