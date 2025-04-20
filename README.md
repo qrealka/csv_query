@@ -66,3 +66,41 @@ and the "tall tree" street names are:
 
 - temple gardens
 - the bramblings
+
+## Building
+
+### Requirements
+
+Docker must be installed and running. The build process uses a Go container image to ensure a consistent build environment.
+
+### How to build
+
+To build the application binary:
+
+1. Clone the repository.
+
+2. Navigate to the project's root directory.
+
+3. Run the following command:
+
+   ```bash
+   make build
+   ```
+
+This command will use Docker to compile the Go code and place the resulting binary (brightbeam) in the *buildDir* directory.
+
+## Project Structure (for Developers)
+
+The project follows a standard Go project layout:
+
+- cmd/brightbeam: Contains the main application entry point (main.go).
+- data: Contains sample data files for analysis.
+  - dublin-trees.json, dublin-property.csv: Sample data files.
+- pkg: Contains the core logic of the application, organized into sub-packages:
+  - aggregator/: Logic for calculating average prices based on groups.
+  - api/: Defines interfaces used throughout the application (e.g., for streams, parsers, attributes, grouping).
+  - csvparser/: Logic for parsing the property CSV data.
+  - groupify/: Logic for grouping streets based on the tree JSON data.
+  - streams/: Implementations for reading data streams (CSV, JSON).
+- Makefile: Defines build and test automation tasks.
+- go.mod, go.sum: Go module dependency management files.

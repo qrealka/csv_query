@@ -22,9 +22,6 @@ func NewJsonStream(reader io.Reader) iface.JsonStream {
 
 // ReadJsonToken implements JsonStream.
 func (j *jsonReader) ReadJsonToken(ctx context.Context) (json.Token, error) {
-	if j == nil || j.decoder == nil {
-		return nil, io.EOF
-	}
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
