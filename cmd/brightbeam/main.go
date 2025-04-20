@@ -25,12 +25,12 @@ var (
 	propertiesPath string
 	verbose        bool
 	logCfg         slog.HandlerOptions = slog.HandlerOptions{
-		Level: slog.LevelError,
+		Level: slog.LevelWarn,
 	}
 )
 
 func cmdLineParse() {
-	pflag.StringVarP(&logPath, "log", "l", "", "path to log file. Default is stdout")
+	pflag.StringVarP(&logPath, "log", "l", "", "path to log file. Default is stderr")
 	pflag.StringVarP(&treesPath, "trees", "t", "dublin-trees.json", "path to JSON file with group of trees (short/tall)")
 	pflag.StringVarP(&propertiesPath, "properties", "p", "dublin-property.csv", "path to CSV file with property prices")
 	pflag.BoolVarP(&verbose, "verbose", "v", false, "enable verbose (debug) logging")
@@ -49,14 +49,14 @@ func initLog() io.Closer {
 		slog.SetDefault(slog.New(slog.NewTextHandler(f, &logCfg)))
 		return f
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &logCfg)))
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &logCfg)))
 	return nil
 }
 
 func open(path string) (io.ReadCloser, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open trees JSON file %q: %v", path, err)
+		return nil, err
 	}
 	return file, nil
 }
@@ -72,23 +72,34 @@ func main() {
 
 	propertiesSource, err := open(propertiesPath)
 	if err != nil {
-		log.Fatalf("failed to open properties CSV file %q: %v", propertiesPath, err)
+		slog.Error("CSV open", "error", err)
+		if len(os.Args) < 4 {
+			pflag.Usage()
+		}
+		os.Exit(1)
 	}
 	defer propertiesSource.Close()
 
 	cvsStream, err := streams.NewCsvStream(propertiesSource)
 	if err != nil {
-		log.Fatalf("failed to create CSV stream: %v", err)
+		slog.Error("create CSV stream", "error", err)
+		os.Exit(2)
 	}
 
 	parser, err := csvparser.NewPriceParser(cvsStream, csvparser.WithColNames("Street Name", "Price"))
 	if err != nil {
-		log.Fatalf("failed to create price parser: %v", err)
+		slog.ErrorContext(ctx, "create price parser", "error", err)
+		os.Exit(3)
 	}
 
 	jsonSource, err := open(treesPath)
 	if err != nil {
-		log.Fatalf("failed to open trees JSON file %q: %v", treesPath, err)
+		slog.ErrorContext(ctx, "JSON open", "error", err)
+		if len(os.Args) < 4 {
+			pflag.Usage()
+		}
+
+		os.Exit(4)
 	}
 	defer jsonSource.Close()
 
@@ -98,19 +109,19 @@ func main() {
 
 	go func() {
 		if err := grouper.GroupStreets(ctx, groups); err != nil {
-			slog.Error("Error grouping streets", "error", err)
+			slog.ErrorContext(ctx, "group streets", "error", err)
 		}
 	}()
 
 	prices := make(chan attr.StreetAttribute, 10000)
 	go func() {
 		if err := parser.ParseAttributes(ctx, prices); err != nil {
-			slog.Error("Error parsing prices", "error", err)
+			slog.ErrorContext(ctx, "Error parsing prices", "error", err)
 		}
 	}()
 
 	if result, err := calculator.Process(ctx, prices); err != nil {
-		slog.Error("Error processing prices", "error", err)
+		slog.ErrorContext(ctx, "Error processing prices", "error", err)
 	} else {
 		// Simulate JSON output
 		fmt.Println("[")
