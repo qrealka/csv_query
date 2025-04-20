@@ -61,19 +61,3 @@ func WithColIndexes(streetColIdx, priceColIdx int) PriceParserOption {
 		return nil
 	}
 }
-
-// WithDecimals forces decimal parsing (default)
-func WithDecimals() PriceParserOption {
-	return func(p *priceParser) error {
-		p.useFloats = false
-		return nil
-	}
-}
-
-// WithFloats forces float64 parsing
-func WithFloats() PriceParserOption {
-	return func(p *priceParser) error {
-		p.useFloats = true
-		return nil
-	}
-}

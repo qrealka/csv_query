@@ -37,6 +37,22 @@ func cmdLineParse() {
 	pflag.Parse()
 }
 
+func initLog() io.Closer {
+	if verbose {
+		logCfg.Level = slog.LevelDebug
+	}
+	if logPath != "" {
+		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			log.Fatalf("failed to open log file %q: %v", logPath, err)
+		}
+		slog.SetDefault(slog.New(slog.NewTextHandler(f, &logCfg)))
+		return f
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &logCfg)))
+	return nil
+}
+
 func open(path string) (io.ReadCloser, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -47,23 +63,12 @@ func open(path string) (io.ReadCloser, error) {
 
 func main() {
 	cmdLineParse()
+	if l := initLog(); l != nil {
+		defer l.Close()
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	if verbose {
-		logCfg.Level = slog.LevelDebug
-	}
-	var output = os.Stdout
-	if logPath != "" {
-		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-		if err != nil {
-			log.Fatalf("failed to open log file %q: %v", logPath, err)
-		}
-		defer f.Close()
-		output = f
-	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(output, &logCfg)))
 
 	propertiesSource, err := open(propertiesPath)
 	if err != nil {
@@ -107,7 +112,7 @@ func main() {
 	if result, err := calculator.Process(ctx, prices); err != nil {
 		slog.Error("Error processing prices", "error", err)
 	} else {
-		// Simulate JSON output with fmt.Printf
+		// Simulate JSON output
 		fmt.Println("[")
 		for i, g := range result {
 			comma := ","
@@ -115,8 +120,8 @@ func main() {
 				comma = ""
 			}
 			fmt.Printf("  {\"group\":\"%s\",\"average\":\"%s\"}%s\n",
-				g.GroupKey().String(),
-				g.AverageValue().String(),
+				g.GroupKey(),
+				g.AverageValue(),
 				comma,
 			)
 		}

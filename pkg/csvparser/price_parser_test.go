@@ -9,7 +9,6 @@ import (
 
 	attr "propertytreeanalyzer/pkg/api/attribute"
 	apiStreams "propertytreeanalyzer/pkg/api/streams"
-	numeric "propertytreeanalyzer/pkg/numeric"
 )
 
 // MockCsvStream is a mock implementation of the CsvStream interface for testing
@@ -101,7 +100,7 @@ func TestNewPriceParser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser, err := NewPriceParser(tt.stream, WithColNames(tt.streetColName, tt.priceColName), WithFloats())
+			parser, err := NewPriceParser(tt.stream, WithColNames(tt.streetColName, tt.priceColName))
 
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("NewPriceParser() error = %v, wantErr %v", err, tt.wantErr)
@@ -136,8 +135,8 @@ func TestParseAttributes(t *testing.T) {
 			streetColName: "Street Name",
 			priceColName:  "Price",
 			expectedAttrs: []attr.StreetAttribute{
-				streetPricePair{streetName: "main street", price: numeric.NewFloatAttribute(100000.00)},
-				streetPricePair{streetName: "oak avenue", price: numeric.NewFloatAttribute(200000.00)},
+				streetPricePair{streetName: "main street", price: "100000.00"},
+				streetPricePair{streetName: "oak avenue", price: "200000.00"},
 			},
 			expectedError: nil,
 		},
@@ -148,7 +147,7 @@ func TestParseAttributes(t *testing.T) {
 			streetColName: "Street Name",
 			priceColName:  "Price",
 			expectedAttrs: []attr.StreetAttribute{
-				streetPricePair{streetName: "main street", price: numeric.NewFloatAttribute(100000.00)},
+				streetPricePair{streetName: "main street", price: "100000.00"},
 			},
 			expectedError: nil,
 		},
@@ -157,7 +156,7 @@ func TestParseAttributes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			stream := NewMockCsvStream(tt.header, tt.records)
-			parser, perr := NewPriceParser(stream, WithColNames(tt.streetColName, tt.priceColName), WithFloats())
+			parser, perr := NewPriceParser(stream, WithColNames(tt.streetColName, tt.priceColName))
 			if perr != nil {
 				t.Fatalf("Failed to create parser: %v", perr)
 			}
@@ -188,7 +187,7 @@ func TestParseAttributes(t *testing.T) {
 				if got.StreetName() != want.StreetName() {
 					t.Errorf("Result[%d] street name = %v, want %v", i, got.StreetName(), want.StreetName())
 				}
-				if !got.AttributeValue().EqualTo(want.AttributeValue()) {
+				if got.AttributeValue() != want.AttributeValue() {
 					t.Errorf("Result[%d] price = %v, want %v", i, got.AttributeValue(), want.AttributeValue())
 				}
 			}
@@ -213,8 +212,8 @@ func TestParsePrices(t *testing.T) {
 			streetColName: "Street Name",
 			priceColName:  "Price",
 			expectedPairs: []streetPricePair{
-				{streetName: "main street", price: numeric.NewFloatAttribute(100000.00)},
-				{streetName: "oak avenue", price: numeric.NewFloatAttribute(200000.00)},
+				{streetName: "main street", price: "100000.00"},
+				{streetName: "oak avenue", price: "200000.00"},
 			},
 			expectedError: nil,
 		},
@@ -225,7 +224,7 @@ func TestParsePrices(t *testing.T) {
 			streetColName: "Street Name",
 			priceColName:  "Price",
 			expectedPairs: []streetPricePair{
-				{streetName: "main street", price: numeric.NewFloatAttribute(100000.00)},
+				{streetName: "main street", price: "100000.00"},
 			},
 			expectedError: nil,
 		},
@@ -236,7 +235,7 @@ func TestParsePrices(t *testing.T) {
 			streetColName: "Street Name",
 			priceColName:  "Price",
 			expectedPairs: []streetPricePair{
-				{streetName: "oak avenue", price: numeric.NewFloatAttribute(200000.00)},
+				{streetName: "oak avenue", price: "200000.00"},
 			},
 			expectedError: nil,
 		},
@@ -247,7 +246,7 @@ func TestParsePrices(t *testing.T) {
 			streetColName: "Street Name",
 			priceColName:  "Price",
 			expectedPairs: []streetPricePair{
-				{streetName: "oak avenue", price: numeric.NewFloatAttribute(200000.00)},
+				{streetName: "oak avenue", price: "200000.00"},
 			},
 			expectedError: nil,
 		},
@@ -256,7 +255,7 @@ func TestParsePrices(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			stream := NewMockCsvStream(tt.header, tt.records)
-			parser, err := NewPriceParser(stream, WithColNames(tt.streetColName, tt.priceColName), WithFloats())
+			parser, err := NewPriceParser(stream, WithColNames(tt.streetColName, tt.priceColName))
 			if err != nil {
 				t.Fatalf("Failed to create parser: %v", err)
 			}
@@ -293,41 +292,6 @@ func TestParsePrices(t *testing.T) {
 	}
 }
 
-func TestParsePrice(t *testing.T) {
-	tests := []struct {
-		name      string
-		priceStr  string
-		want      float64
-		wantError bool
-	}{
-		{"Simple number", "100", 100.0, false},
-		{"Decimal number", "100.50", 100.50, false},
-		{"With commas", "1,000,000.00", 1000000.00, false},
-		{"With dollar sign", "$100.00", 100.00, false},
-		{"With euro sign", "€100.00", 100.00, false},
-		{"With pound sign", "£100.00", 100.00, false},
-		{"With whitespace", " 100.00 ", 100.00, false},
-		{"Combined formats", "€ 1,000,000.50", 1000000.50, false},
-		{"Invalid format", "abc", 0, true},
-		{"Empty string", "", 0, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := numeric.ParseFloatAttribute(tt.priceStr)
-
-			if (err != nil) != tt.wantError {
-				t.Errorf("parsePrice() error = %v, wantError %v", err, tt.wantError)
-				return
-			}
-
-			if !tt.wantError && !got.EqualTo(numeric.NewFloatAttribute(tt.want)) {
-				t.Errorf("parsePrice() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestErrorScenarios(t *testing.T) {
 	// Test for stream that returns error on ReadCsvRecord
 	t.Run("Stream read error", func(t *testing.T) {
@@ -337,7 +301,7 @@ func TestErrorScenarios(t *testing.T) {
 			err:    errors.New("read error"),
 		}
 
-		parser, err := NewPriceParser(mockStream, WithColNames("Street Name", "Price"), WithFloats())
+		parser, err := NewPriceParser(mockStream, WithColNames("Street Name", "Price"))
 		if err != nil {
 			t.Fatalf("Failed to create parser: %v", err)
 		}
@@ -378,7 +342,7 @@ func TestStreamIntegration(t *testing.T) {
 	reader := strings.NewReader(csvData)
 	csvStream := &testCsvStream{reader: reader}
 
-	parser, err := NewPriceParser(csvStream, WithColNames("Street Name", "Price"), WithFloats())
+	parser, err := NewPriceParser(csvStream, WithColNames("Street Name", "Price"))
 	if err != nil {
 		t.Fatalf("Failed to create parser: %v", err)
 	}
@@ -401,8 +365,8 @@ func TestStreamIntegration(t *testing.T) {
 	<-done
 
 	expected := []streetPricePair{
-		{streetName: "main street", price: numeric.NewFloatAttribute(100000)},
-		{streetName: "oak avenue", price: numeric.NewFloatAttribute(200000)},
+		{streetName: "main street", price: "100000"},
+		{streetName: "oak avenue", price: "200000"},
 	}
 
 	if len(results) != len(expected) {

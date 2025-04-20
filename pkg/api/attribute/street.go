@@ -6,7 +6,7 @@ type StreetAttribute interface {
 	StreetName() string
 
 	// AttributeValue returns the value of the attribute associated with the street
-	AttributeValue() NumericAttribute
+	AttributeValue() string
 
 	// EqualTo checks if two street attributes are equal
 	EqualTo(other StreetAttribute) bool

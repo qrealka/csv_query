@@ -5,11 +5,11 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"unicode"
 
 	attr "propertytreeanalyzer/pkg/api/attribute"
 	apiParser "propertytreeanalyzer/pkg/api/parsers"
 	apiStreams "propertytreeanalyzer/pkg/api/streams"
-	decimal "propertytreeanalyzer/pkg/numeric"
 )
 
 var (
@@ -20,7 +20,7 @@ var (
 // streetPricePair represents a pair of street name and price
 type streetPricePair struct {
 	streetName string
-	price      attr.NumericAttribute
+	price      string
 }
 
 // StreetName returns the name of the street
@@ -28,8 +28,8 @@ func (s streetPricePair) StreetName() string {
 	return s.streetName
 }
 
-// AttributeValue returns the price as an 'any' type
-func (s streetPricePair) AttributeValue() attr.NumericAttribute {
+// AttributeValue returns the value of the attribute associated with the street
+func (s streetPricePair) AttributeValue() string {
 	return s.price
 }
 
@@ -41,7 +41,7 @@ func (s streetPricePair) EqualTo(other attr.StreetAttribute) bool {
 	if !strings.EqualFold(s.streetName, other.StreetName()) {
 		return false
 	}
-	return s.price.EqualTo(other.AttributeValue())
+	return s.price == other.AttributeValue()
 }
 
 // priceParser parses CSV records and extracts street name and price pairs
@@ -50,7 +50,6 @@ type priceParser struct {
 	stream    apiStreams.CsvStream
 	streetIdx int
 	priceIdx  int
-	useFloats bool
 }
 
 // NewPriceParser creates a new price parser with the given CSV stream and column names
@@ -62,7 +61,6 @@ func NewPriceParser(stream apiStreams.CsvStream, opts ...PriceParserOption) (api
 		stream:    stream,
 		streetIdx: -1,
 		priceIdx:  -1,
-		useFloats: false,
 	}
 	for _, opt := range opts {
 		if err := opt(p); err != nil {
@@ -97,31 +95,23 @@ func (p *priceParser) loadPrices(ctx context.Context, out chan<- attr.StreetAttr
 			continue
 		}
 
-		streetName := strings.ToLower(record[p.streetIdx])
-		priceStr := record[p.priceIdx]
-
-		var price attr.NumericAttribute
-		if !p.useFloats {
-			price, err = decimal.ParseDecimalAttribute(priceStr)
-			if err != nil {
-				slog.WarnContext(ctx, "Failed to parse price as decimal", slog.String("price", priceStr), slog.Any("error", err))
-				continue
+		// drop everything that is not a digit, dot or minus in one pass
+		price := strings.Map(func(r rune) rune {
+			if unicode.IsDigit(r) || r == '.' || r == '-' {
+				return r
 			}
-		} else {
-			price, err = decimal.ParseFloatAttribute(priceStr)
-			if err != nil {
-				slog.WarnContext(ctx, "Failed to parse price as float", slog.String("price", priceStr), slog.Any("error", err))
-				continue
-			}
-		}
+			return -1
+		}, record[p.priceIdx])
 
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			out <- streetPricePair{
-				streetName: streetName,
-				price:      price,
+			if len(price) != 0 {
+				out <- streetPricePair{
+					streetName: strings.ToLower(record[p.streetIdx]),
+					price:      price,
+				}
 			}
 		}
 	}

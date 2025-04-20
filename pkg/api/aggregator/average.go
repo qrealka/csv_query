@@ -8,8 +8,8 @@ import (
 
 // AverageByGroup represents aggregated values for a group
 type AverageByGroup interface {
-	GroupKey() attr.BaseAttribute
-	AverageValue() attr.NumericAttribute
+	GroupKey() string
+	AverageValue() string
 }
 
 type AvgerageAggregator interface {

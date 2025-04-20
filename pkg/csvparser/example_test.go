@@ -24,7 +24,6 @@ Elm Rd,15.00
 	parser, _ := csvparser.NewPriceParser(
 		stream,
 		csvparser.WithColNames("street", "price"),
-		csvparser.WithFloats(),
 	)
 
 	out := make(chan attr.StreetAttribute)

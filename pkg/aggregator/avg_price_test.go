@@ -6,9 +6,7 @@ import (
 
 	apiAttr "propertytreeanalyzer/pkg/api/attribute"
 	apiGroupify "propertytreeanalyzer/pkg/api/groupify"
-	num "propertytreeanalyzer/pkg/numeric"
 
-	"github.com/cockroachdb/apd/v3"
 	"github.com/xyproto/randomstring"
 )
 
@@ -20,39 +18,34 @@ func (b baseAttr) String() string { return string(b) }
 // mockGroupItem implements apiGroupify.StreetGroupItem.
 type mockGroupItem struct {
 	key    string
-	street apiGroupify.StreetName
+	street string
 }
 
 func (m mockGroupItem) Key() apiAttr.BaseAttribute         { return baseAttr(m.key) }
-func (m mockGroupItem) StreetName() apiGroupify.StreetName { return m.street }
+func (m mockGroupItem) StreetName() apiGroupify.StreetName { return apiGroupify.StreetName(m.street) }
 
 // mockStreetAttr implements apiAttr.StreetAttribute.
 type mockStreetAttr struct {
 	street string
-	val    apiAttr.NumericAttribute
+	val    string
 }
 
-func (m mockStreetAttr) StreetName() string                       { return m.street }
-func (m mockStreetAttr) AttributeValue() apiAttr.NumericAttribute { return m.val }
+func (m mockStreetAttr) StreetName() string     { return m.street }
+func (m mockStreetAttr) AttributeValue() string { return m.val }
 func (m mockStreetAttr) EqualTo(other apiAttr.StreetAttribute) bool {
-	return m.street == other.StreetName() && m.val.EqualTo(other.AttributeValue())
+	return m.street == other.StreetName() && m.val == other.AttributeValue()
 }
 
-// func sortResults(rs []api.AverageByGroup) {
-// 	sort.Slice(rs, func(i, j int) bool {
-// 		return rs[i].GroupKey().String() < rs[j].GroupKey().String()
-// 	})
-// }
-
-func TestProcess_Decimal(t *testing.T) {
+func TestProcess_Int(t *testing.T) {
 	// one group "g1" with street "s1", prices 10.00 and 20.00 → avg 15.00
 	groups := make(chan apiGroupify.StreetGroupItem, 1)
-	groups <- mockGroupItem{"g1", apiGroupify.ParseStreetName("s1")}
+	groups <- mockGroupItem{"g1", "s1"}
 	close(groups)
 
-	streets := make(chan apiAttr.StreetAttribute, 2)
-	streets <- mockStreetAttr{"s1", num.NewDecimalAttribute(apd.New(10, 0))}
-	streets <- mockStreetAttr{"s1", num.NewDecimalAttribute(apd.New(20, 0))}
+	streets := make(chan apiAttr.StreetAttribute, 3)
+	streets <- mockStreetAttr{"s1", "1"}
+	streets <- mockStreetAttr{"s1", "2"}
+	streets <- mockStreetAttr{"s1", "4"}
 	close(streets)
 
 	agg := NewAvgPriceBy(groups)
@@ -63,25 +56,21 @@ func TestProcess_Decimal(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(out))
 	}
-	decOut, err := num.CastToDecimalAttribute(out[0].AverageValue())
-	if err != nil {
-		t.Fatal(err)
-	}
 	// expect exactly 15
-	if decOut.GetDecimal().Cmp(apd.New(15, 0)) != 0 {
-		t.Errorf("decimal avg = %s, want 15", decOut.GetDecimal().String())
+	if out[0].AverageValue() != "2.33" {
+		t.Errorf("decimal avg = %s, want 2.33", out[0].AverageValue())
 	}
 }
 
 func TestProcess_Float(t *testing.T) {
 	// one group "gA" with street "foo", prices 1.5 and 2.5 → avg 2.0
 	groups := make(chan apiGroupify.StreetGroupItem, 1)
-	groups <- mockGroupItem{"gA", apiGroupify.ParseStreetName("foo")}
+	groups <- mockGroupItem{"gA", "foo"}
 	close(groups)
 
 	streets := make(chan apiAttr.StreetAttribute, 2)
-	streets <- mockStreetAttr{"foo", num.NewFloatAttribute(1.5)}
-	streets <- mockStreetAttr{"foo", num.NewFloatAttribute(2.5)}
+	streets <- mockStreetAttr{"foo", "1.11"}
+	streets <- mockStreetAttr{"foo", "2.0007"}
 	close(streets)
 
 	agg := NewAvgPriceBy(groups)
@@ -92,27 +81,23 @@ func TestProcess_Float(t *testing.T) {
 	if len(out) != 1 {
 		t.Fatalf("expected 1 group, got %d", len(out))
 	}
-	floatOut, err := num.CastToFloatAttribute(out[0].AverageValue())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := floatOut.GetFloat(); got != 2.0 {
-		t.Errorf("float avg = %v, want 2.0", got)
+	if out[0].AverageValue() != "1.56" {
+		t.Errorf("float avg = %s, want 1.56", out[0].AverageValue())
 	}
 }
 
 func TestProcess_MultipleGroups(t *testing.T) {
 	// two groups g1 and g2
 	groups := make(chan apiGroupify.StreetGroupItem, 2)
-	groups <- mockGroupItem{"g1", apiGroupify.ParseStreetName("s1")}
-	groups <- mockGroupItem{"g2", apiGroupify.ParseStreetName("s2")}
+	groups <- mockGroupItem{"g1", "s1"}
+	groups <- mockGroupItem{"g2", "s2"}
 	close(groups)
 
 	streets := make(chan apiAttr.StreetAttribute, 4)
-	streets <- mockStreetAttr{"s1", num.NewFloatAttribute(10)}
-	streets <- mockStreetAttr{"s1", num.NewFloatAttribute(20)}
-	streets <- mockStreetAttr{"s2", num.NewDecimalAttribute(apd.New(3, 0))}
-	streets <- mockStreetAttr{"s2", num.NewDecimalAttribute(apd.New(7, 0))}
+	streets <- mockStreetAttr{"s1", "10"}
+	streets <- mockStreetAttr{"s1", "20"}
+	streets <- mockStreetAttr{"s2", "3"}
+	streets <- mockStreetAttr{"s2", "7"}
 	close(streets)
 
 	agg := NewAvgPriceBy(groups)
@@ -125,26 +110,18 @@ func TestProcess_MultipleGroups(t *testing.T) {
 	}
 
 	// check g1
-	if out[0].GroupKey().String() != "g1" {
-		t.Errorf("first key = %s, want g1", out[0].GroupKey().String())
+	if out[0].GroupKey() != "g1" {
+		t.Errorf("first key = %s, want g1", out[0].GroupKey())
 	}
-	f1, err := num.CastToFloatAttribute(out[0].AverageValue())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f1.GetFloat() != 15.0 {
-		t.Errorf("g1 avg = %v, want 15.0", f1.GetFloat())
+	if out[0].AverageValue() != "15.00" {
+		t.Errorf("g1 avg = %s, want 15.00", out[0].AverageValue())
 	}
 	// check g2
-	if out[1].GroupKey().String() != "g2" {
-		t.Errorf("second key = %s, want g2", out[1].GroupKey().String())
+	if out[1].GroupKey() != "g2" {
+		t.Errorf("second key = %s, want g2", out[1].GroupKey())
 	}
-	d2, err := num.CastToDecimalAttribute(out[1].AverageValue())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d2.GetDecimal().Cmp(apd.New(5, 0)) != 0 {
-		t.Errorf("g2 avg = %s, want 5.00", d2.GetDecimal().String())
+	if out[1].AverageValue() != "5.00" {
+		t.Errorf("g2 avg = %s, want 5.00", out[1].AverageValue())
 	}
 }
 
@@ -173,8 +150,10 @@ func BenchmarkProcess(b *testing.B) {
 	for i := range Ngroups {
 		name := randomstring.HumanFriendlyEnglishString(5)
 		street := randomstring.HumanFriendlyEnglishString(15)
-		baseGroups[i] = mockGroupItem{key: name, street: apiGroupify.ParseStreetName(street)}
+		baseGroups[i] = mockGroupItem{key: name, street: street}
 	}
+
+	b.ResetTimer()
 
 	for b.Loop() {
 		groups := make(chan apiGroupify.StreetGroupItem, Ngroups)
@@ -186,10 +165,10 @@ func BenchmarkProcess(b *testing.B) {
 		close(groups)
 		// feed streets
 		for _, g := range baseGroups {
-			for j := range Nper {
+			for range Nper {
 				streets <- mockStreetAttr{
-					street: g.street.String(),
-					val:    num.NewFloatAttribute(float64(j%100) + 0.5),
+					street: g.street,
+					val:    "100",
 				}
 			}
 		}

@@ -2,14 +2,12 @@ package aggregator
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 
 	api "propertytreeanalyzer/pkg/api/aggregator"
 	apiAttr "propertytreeanalyzer/pkg/api/attribute"
 	apiGroupify "propertytreeanalyzer/pkg/api/groupify"
-	num "propertytreeanalyzer/pkg/numeric"
 
 	"github.com/cockroachdb/apd/v3"
 	"golang.org/x/sync/errgroup"
@@ -21,19 +19,14 @@ const (
 )
 
 type avgByGroup struct {
-	key apiAttr.BaseAttribute
-	val apiAttr.NumericAttribute
+	key string
+	val string
 }
 
-func (a avgByGroup) GroupKey() apiAttr.BaseAttribute        { return a.key }
-func (a avgByGroup) AverageValue() apiAttr.NumericAttribute { return a.val }
-
-type stringAttr string
-
-func (s stringAttr) String() string { return string(s) }
+func (a avgByGroup) GroupKey() string     { return a.key }
+func (a avgByGroup) AverageValue() string { return a.val }
 
 var (
-	_ apiAttr.BaseAttribute  = (*stringAttr)(nil)
 	_ api.AverageByGroup     = (*avgByGroup)(nil)
 	_ api.AvgerageAggregator = (*avgPriceBy)(nil)
 
@@ -65,85 +58,58 @@ func NewAvgPriceBy(groups <-chan apiGroupify.StreetGroupItem) api.AvgerageAggreg
 }
 
 // averagePrice calculates the average price of a group of attributes
-func averagePrice(ctx context.Context, in <-chan apiAttr.NumericAttribute) (apiAttr.NumericAttribute, error) {
-	numType := apiAttr.Nothing
+func averagePrice(ctx context.Context, in <-chan string) (string, error) {
 	sumDec := apd.New(0, 0)
-	sumFloat := float64(0)
+	valDec := apd.New(0, 0)
 	cnt := int64(0)
 	done := ctx.Done()
 
 	for val := range in {
 		select {
 		case <-done:
-			return nil, ctx.Err()
+			return "", ctx.Err()
 		default:
 		}
 
-		if numType == apiAttr.Nothing {
-			// we initialize numeric type only once. I do notexpect that we could have few numeric types in one group
-			numType = val.GetNumericType()
+		// minimize memory allocations
+		if _, c, err := valDec.SetString(val); err != nil {
+			slog.ErrorContext(ctx, "Error parsing value", "value", val, "condition", c, "error", err)
+			return "", err
+		} else {
+			if _, err := sumCtx.Add(sumDec, sumDec, valDec); err != nil {
+				slog.ErrorContext(ctx, "Error adding price to sum", "price", valDec.String(), "error", err)
+				return "", err
+			}
 		}
 
-		if numType == apiAttr.Decimal {
-			if decVal, err := num.CastToDecimalAttribute(val); err != nil {
-				slog.ErrorContext(ctx, "Error casting to decimal", "error", err)
-				return nil, err
-			} else {
-				price := decVal.GetDecimal()
-				if _, err := sumCtx.Add(sumDec, sumDec, price); err != nil {
-					slog.ErrorContext(ctx, "Error adding price to sum", "price", price.String(), "error", err)
-					return nil, err
-				}
-			}
-		} else if numType == apiAttr.Float {
-			if floatVal, err := num.CastToFloatAttribute(val); err != nil {
-				slog.ErrorContext(ctx, "Error casting to float", "error", err)
-				return nil, err
-			} else {
-				price := floatVal.GetFloat()
-				sumFloat += price
-			}
-		} else {
-			slog.ErrorContext(ctx, "Unknown numeric type", "type", numType)
-			return nil, fmt.Errorf("unknown numeric type: %s", val)
-		}
 		cnt++
 	}
 
 	// calculate average
-	if numType == apiAttr.Decimal {
-		avg := apd.New(0, 0)
-		if _, err := avgCtx.Quo(avg, sumDec, apd.New(cnt, 0)); err != nil {
-			slog.ErrorContext(ctx, "Error calculating average", "error", err)
-			return nil, err
-		}
-		if _, err := avgCtx.Quantize(avg, avg, -2); err != nil {
-			slog.ErrorContext(ctx, "Error quantizing average", "error", err)
-			return nil, err
-		}
-		return num.NewDecimalAttribute(avg), nil
-	} else if numType == apiAttr.Float {
-		avg := sumFloat / float64(cnt)
-		return num.NewFloatAttribute(avg), nil
+	valDec.SetInt64(0)
+	if _, err := avgCtx.Quo(valDec, sumDec, apd.New(cnt, 0)); err != nil {
+		slog.ErrorContext(ctx, "Error calculating average", "error", err)
+		return "", err
 	}
-
-	// nothing to average
-	return num.NoneNumeric, nil
-
+	if _, err := avgCtx.Quantize(valDec, valDec, -2); err != nil {
+		slog.ErrorContext(ctx, "Error quantizing average", "error", err)
+		return "", err
+	}
+	return valDec.String(), nil
 }
 
 // Process implements aggregators.AvgerageAggregator.
 func (a *avgPriceBy) Process(ctx context.Context, streets <-chan apiAttr.StreetAttribute) (outputs []api.AverageByGroup, resultErr error) {
 	// I use regular map here because the number of groups is immutable in the Process method
 	// So I precreate and fill maps
-	prices := make(map[string]chan apiAttr.NumericAttribute) // parallel calculation AVG price per groups
+	prices := make(map[string]chan string) // parallel calculation AVG price per groups
 	// here is the biggest storage complexity, but I do not expect to have more than 100K streets
 	// for golang 1.24 it is swiss table and for my microbenchmarks it works faster than existing Patricia tree in Go
 	streetToSize := make(map[string]string) // joining street names with group ids
 	done := ctx.Done()
 
 	type result struct {
-		avg apiAttr.NumericAttribute
+		avg string
 		err error
 	}
 
@@ -155,8 +121,8 @@ func (a *avgPriceBy) Process(ctx context.Context, streets <-chan apiAttr.StreetA
 		groupId := item.Key().String()
 		streetToSize[item.StreetName().String()] = groupId
 		if _, ok := prices[groupId]; !ok {
-			prices[groupId] = make(chan apiAttr.NumericAttribute, priceQueueSize)
-			results.Store(groupId, result{avg: num.NoneNumeric, err: nil})
+			prices[groupId] = make(chan string, priceQueueSize)
+			results.Store(groupId, result{avg: "", err: nil})
 		}
 	}
 
@@ -174,6 +140,7 @@ func (a *avgPriceBy) Process(ctx context.Context, streets <-chan apiAttr.StreetA
 	// feed price channels
 	go func() {
 		defer func() {
+			// close() is a cheap operation
 			for _, ch := range prices {
 				close(ch)
 			}
@@ -205,7 +172,7 @@ func (a *avgPriceBy) Process(ctx context.Context, streets <-chan apiAttr.StreetA
 			return false
 		}
 		outputs = append(outputs, avgByGroup{
-			key: stringAttr(groupId),
+			key: groupId,
 			val: res.avg,
 		})
 		return true
