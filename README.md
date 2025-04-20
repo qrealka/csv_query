@@ -87,6 +87,12 @@ To build the application binary:
    make build
    ```
 
+4. To run the application, use:
+
+   ```bash
+   make run
+   ```
+
 This command will use Docker to compile the Go code and place the resulting binary (brightbeam) in the *buildDir* directory.
 
 ## Project Structure (for Developers)
